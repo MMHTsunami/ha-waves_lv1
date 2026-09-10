@@ -1,62 +1,71 @@
-"""Select platform for Waves eMotion LV1 (Scene Recall)."""
-from __future__ import annotations
+"""Scene selection for the LV1."""
 
-import struct
-from typing import Any
+from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .coordinator import LV1DataUpdateCoordinator
+from .coordinator import LV1Coordinator, signal_scene_update
+from .entity import LV1Entity
+from .protocol.osc import OscArg
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up Scene Selector entity."""
-    coordinator: LV1DataUpdateCoordinator = hass.data["waves_lv1"][entry.entry_id]
+    """Set up the current-scene selector."""
+    coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
     async_add_entities([LV1SceneSelect(coordinator)])
 
 
-class LV1SceneSelect(CoordinatorEntity[LV1DataUpdateCoordinator], SelectEntity):
-    """Dropdown for active scene selection."""
+class LV1SceneSelect(SelectEntity):
+    """Select and recall scenes by their LV1-provided names."""
 
-    def __init__(self, coordinator: LV1DataUpdateCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_name = "LV1 Active Scene"
-        self._attr_unique_id = f"{coordinator.host}_scene_select"
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: LV1Coordinator) -> None:
+        self._coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.entry_id}_scene"
+        self._attr_name = "Scene"
+        self._attr_device_info = LV1Entity(coordinator, 0, 0, "scene").device_info
+
+    @property
+    def available(self) -> bool:
+        return self._coordinator.connected
 
     @property
     def options(self) -> list[str]:
-        """Return available scene names."""
-        if not self.coordinator.scenes:
-            return ["Scene 1", "Scene 2", "Scene 3"]
-        return list(self.coordinator.scenes.values())
+        return [name for _, name in sorted(self._coordinator.scenes.items())]
 
     @property
     def current_option(self) -> str | None:
-        """Return current scene name."""
-        if self.coordinator.current_scene_name:
-            return self.coordinator.current_scene_name
-        if self.coordinator.current_scene is not None:
-            return f"Scene {self.coordinator.current_scene + 1}"
-        return None
+        return self._coordinator.current_scene_name
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_scene_update(self._coordinator.entry_id),
+                self._handle_scene_update,
+            )
+        )
+
+    @callback
+    def _handle_scene_update(self) -> None:
+        self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
-        """Recall selected scene by index."""
-        target_idx = 0
-        for idx, name in self.coordinator.scenes.items():
-            if name == option:
-                target_idx = idx
-                break
-
-        # /Set/Scene/Recall ,i [scene_idx]
-        payload = struct.pack(">i", target_idx)
-        await self.coordinator.osc_client.send_raw_osc(
-            "/Set/Scene/Recall", payload
+        scene_index = next(
+            (index for index, name in self._coordinator.scenes.items() if name == option),
+            None,
         )
+        if scene_index is None:
+            return
+        self._coordinator.current_scene = scene_index
+        self._coordinator.current_scene_name = option
+        self._coordinator.client.send("/Set/CurSceneIndex", [OscArg("i", scene_index)])
+        self.async_write_ha_state()
