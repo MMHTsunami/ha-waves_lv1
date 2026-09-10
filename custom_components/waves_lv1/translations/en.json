@@ -1,0 +1,22 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to your Waves LV1",
+                "description": "Pick a discovered LV1, or enter its address manually.",
+                "data": {
+                    "selected": "Discovered LV1",
+                    "host": "LV1 IP (override)",
+                    "port": "LV1 port (0 = auto)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Could not connect to the LV1 at the given address.",
+            "no_devices_found": "No LV1s found on the LAN."
+        },
+        "abort": {
+            "already_configured": "This LV1 is already configured."
+        }
+    }
+}
