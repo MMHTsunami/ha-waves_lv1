@@ -11,8 +11,9 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import LV1Coordinator, signal_mute_group_update, signal_send_update
-from .entity import LV1Entity
+from .entity import LV1Entity, aux_display_name
 from .protocol.osc import OscArg
+from .protocol.tracks import track_entity_prefix
 
 
 async def async_setup_entry(
@@ -42,8 +43,8 @@ class LV1TrackSwitch(LV1Entity, SwitchEntity):
     """Mute or solo switch for one LV1 track."""
 
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int, prop: str) -> None:
-        super().__init__(coordinator, group, ch, prop)
-        self._attr_name = "Mute" if prop == "mute" else "Solo"
+        control_label = "Mute" if prop == "mute" else "Solo"
+        super().__init__(coordinator, group, ch, prop, control_label=control_label)
 
     @property
     def is_on(self) -> bool:
@@ -88,8 +89,16 @@ class LV1SendSwitch(SwitchEntity):
         self._ch = ch
         self._aux = aux
         self._attr_unique_id = f"{coordinator.entry_id}_0_{ch}_aux_{aux}_on"
-        self._attr_name = f"Aux {aux + 1} Send"
         self._attr_device_info = LV1Entity(coordinator, 0, ch, "send").device_info
+
+    @property
+    def name(self) -> str:
+        parts = [track_entity_prefix(2, self._aux)]
+        aux_name = aux_display_name(self._coordinator, self._aux)
+        if aux_name:
+            parts.append(aux_name)
+        parts.append("Send")
+        return " ".join(parts)
 
     @property
     def available(self) -> bool:
@@ -145,8 +154,11 @@ class LV1MuteGroupSwitch(SwitchEntity):
         self._coordinator = coordinator
         self._index = index
         self._attr_unique_id = f"{coordinator.entry_id}_mute_group_{index}"
-        self._attr_name = f"Mute Group {index + 1}"
         self._attr_device_info = LV1Entity(coordinator, 0, 0, "mute_group").device_info
+
+    @property
+    def name(self) -> str:
+        return f"MG{self._index + 1} Mute"
 
     @property
     def available(self) -> bool:

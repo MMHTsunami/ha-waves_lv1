@@ -17,6 +17,7 @@ from .coordinator import (
     signal_user_key_update,
 )
 from .entity import LV1Entity
+from .protocol.tracks import user_key_label
 
 
 async def async_setup_entry(
@@ -115,8 +116,7 @@ class LV1TrackNameSensor(LV1Entity, SensorEntity):
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int) -> None:
-        super().__init__(coordinator, group, ch, "sensor_name")
-        self._attr_name = "Track Name"
+        super().__init__(coordinator, group, ch, "sensor_name", control_label="Track Name")
 
     @property
     def native_value(self) -> str | None:
@@ -129,8 +129,7 @@ class LV1TrackColorSensor(LV1Entity, SensorEntity):
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int) -> None:
-        super().__init__(coordinator, group, ch, "color")
-        self._attr_name = "Color"
+        super().__init__(coordinator, group, ch, "color", control_label="Color")
 
     @property
     def native_value(self) -> str | None:
@@ -152,8 +151,13 @@ class LV1UserKeySensor(SensorEntity):
         self._coordinator = coordinator
         self._index = index
         self._attr_unique_id = f"{coordinator.entry_id}_user_key_{index}"
-        self._attr_name = f"User Key {index + 1}"
         self._attr_device_info = LV1Entity(coordinator, 0, 0, "user_key").device_info
+
+    @property
+    def name(self) -> str:
+        info = self._coordinator.user_keys.get(self._index)
+        label = user_key_label(info.func if info else None)
+        return f"UK{self._index + 1} {label} Info"
 
     @property
     def native_value(self) -> str | None:

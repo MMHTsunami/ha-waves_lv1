@@ -8,8 +8,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import LV1Coordinator
-from .entity import LV1Entity
+from .entity import LV1Entity, aux_display_name
 from .protocol.osc import OscArg
+from .protocol.tracks import track_entity_prefix
 
 
 async def async_setup_entry(
@@ -35,15 +36,14 @@ class LV1TrackNumber(LV1Entity, NumberEntity):
     _attr_mode = NumberMode.SLIDER
 
     _LIMITS = {
-        "gain": (-144.0, 10.0, 0.1, "Output Fader"),
+        "gain": (-144.0, 10.0, 0.1, "Fader"),
         "pan": (-1.0, 1.0, 0.01, "Pan"),
-        "width": (0.0, 1.0, 0.01, "Stereo Width"),
+        "width": (0.0, 1.0, 0.01, "Width"),
     }
 
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int, prop: str) -> None:
-        super().__init__(coordinator, group, ch, prop)
-        minimum, maximum, step, name = self._LIMITS[prop]
-        self._attr_name = name
+        minimum, maximum, step, control_label = self._LIMITS[prop]
+        super().__init__(coordinator, group, ch, prop, control_label=control_label)
         self._attr_native_min_value = minimum
         self._attr_native_max_value = maximum
         self._attr_native_step = step
@@ -85,8 +85,16 @@ class LV1SendGainNumber(NumberEntity):
         self._ch = ch
         self._aux = aux
         self._attr_unique_id = f"{coordinator.entry_id}_0_{ch}_aux_{aux}_gain"
-        self._attr_name = f"Aux {aux + 1} Send Gain"
         self._attr_device_info = LV1Entity(coordinator, 0, ch, "send_gain").device_info
+
+    @property
+    def name(self) -> str:
+        parts = [track_entity_prefix(2, self._aux)]
+        aux_name = aux_display_name(self._coordinator, self._aux)
+        if aux_name:
+            parts.append(aux_name)
+        parts.append("Send Gain")
+        return " ".join(parts)
 
     @property
     def available(self) -> bool:
