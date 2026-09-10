@@ -1,0 +1,12 @@
+{
+  "domain": "waves_lv1",
+  "name": "Waves eMotion LV1",
+  "codeowners": ["@MMHTsunami"],
+  "config_flow": true,
+  "documentation": "https://github.com/MMHTsunami/ha-waves_lv1",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/MMHTsunami/ha-waves_lv1/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

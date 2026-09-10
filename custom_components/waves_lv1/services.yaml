@@ -1,0 +1,76 @@
+fade_fader:
+  name: Fade fader
+  description: Smoothly ramp a track output or aux send gain to a target in dB.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Optional config entry ID when multiple LV1 mixers are configured.
+      selector:
+        text:
+    target:
+      name: Target
+      required: true
+      selector:
+        select:
+          options:
+            - out
+            - send
+    group:
+      name: Group
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 12
+          mode: box
+    channel:
+      name: Channel
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+    aux:
+      name: Aux
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+    target_db:
+      name: Target dB
+      required: true
+      selector:
+        number:
+          min: -144
+          max: 10
+          step: 0.1
+          mode: box
+    duration_ms:
+      name: Duration (ms)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 600000
+          mode: box
+
+send_raw_osc:
+  name: Send raw OSC
+  description: Send a typed OSC message to the LV1.
+  fields:
+    entry_id:
+      name: Config entry
+      selector:
+        text:
+    address:
+      name: OSC address
+      required: true
+      selector:
+        text:
+    args:
+      name: Typed arguments
+      description: Use tokens such as i:0, d:-6.0, s:Hello, T, or F.
+      selector:
+        text:
