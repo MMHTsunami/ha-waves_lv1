@@ -42,7 +42,11 @@ async def async_setup_entry(
         )
     for group, ch in filter_tracks_by_groups(coordinator.enumerate_tracks(), enabled_groups):
         entities.extend(
-            (LV1TrackNameSensor(coordinator, group, ch), LV1TrackColorSensor(coordinator, group, ch))
+            (
+                LV1TrackNameSensor(coordinator, group, ch),
+                LV1TrackColorSensor(coordinator, group, ch),
+                LV1TrackMeterSensor(coordinator, group, ch),
+            )
         )
     if GROUP_USER_KEYS in enabled_groups:
         entities.extend(LV1UserKeySensor(coordinator, index) for index in range(16))
@@ -167,6 +171,22 @@ class LV1TrackColorSensor(LV1Entity, SensorEntity):
             return None
         red, green, blue = (max(0, min(255, round(value * 255))) for value in color.color)
         return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+class LV1TrackMeterSensor(LV1Entity, SensorEntity):
+    """Live track VU level, reported in decibels."""
+
+    _attr_entity_registry_enabled_default = False
+    _attr_native_unit_of_measurement = "dB"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: LV1Coordinator, group: int, ch: int) -> None:
+        super().__init__(coordinator, group, ch, "meter", control_label="VU")
+
+    @property
+    def native_value(self) -> float | None:
+        state = self._coordinator.channels.get((self._group, self._ch))
+        return None if state is None else state.meter
 
 
 class LV1UserKeySensor(SensorEntity):

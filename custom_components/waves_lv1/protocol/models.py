@@ -16,6 +16,7 @@ class ChannelState:
     name: str | None = None
     pan: float = 0.0  # -1 (full L) .. +1 (full R), 0 = center
     width: float = 1.0  # 0 (mono) .. 1 (full stereo)
+    meter: float | None = None  # dBFS, live VU level from /Notify/Meters
 
 
 @dataclass(slots=True)

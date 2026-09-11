@@ -9,6 +9,7 @@ about every change (from any client) unprompted, so there is nothing to poll.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -99,6 +100,8 @@ class LV1Coordinator:
 
         self._consecutive_failures = 0
         self._rediscover_task: Any | None = None
+        self._meter_pending_updates: set[tuple[int, int]] = set()
+        self._meter_flush_task: Any | None = None
 
     @property
     def connected(self) -> bool:
@@ -262,6 +265,56 @@ class LV1Coordinator:
             return
         self.ensure_channel(int(group), int(ch)).name = name
         async_dispatcher_send(self.hass, signal_track_update(self.entry_id), int(group), int(ch))
+
+    def _handle_meters(self, message: OscMessage) -> None:
+        """Accept `/Notify/Meters` payloads in either plain triplet or "count + triplets" form."""
+        args = message.args
+        if not args:
+            return
+
+        total_triplets = None
+        if args[0].type == "i":
+            maybe_count = args[0].value
+            if isinstance(maybe_count, int) and maybe_count > 0 and len(args) - 1 == maybe_count * 3:
+                total_triplets = maybe_count
+                start = 1
+            else:
+                start = 0
+        else:
+            start = 0
+
+        if total_triplets is None:
+            total_triplets = (len(args) - start) // 3
+
+        updated: set[tuple[int, int]] = set()
+        for idx in range(total_triplets):
+            base = start + idx * 3
+            if base + 2 >= len(args):
+                break
+            group_arg, ch_arg, value_arg = args[base], args[base + 1], args[base + 2]
+            if group_arg.type not in ("i", "f", "d") or ch_arg.type not in ("i", "f", "d"):
+                continue
+            if value_arg.type not in ("i", "f", "d"):
+                continue
+            group, ch = int(group_arg.value), int(ch_arg.value)
+            value = float(value_arg.value)
+            self.ensure_channel(group, ch).meter = value
+            updated.add((group, ch))
+
+        if not updated:
+            return
+        self._meter_pending_updates.update(updated)
+        if self._meter_flush_task is None or self._meter_flush_task.done():
+            self._meter_flush_task = self.hass.async_create_task(self._async_flush_meter_updates())
+
+    async def _async_flush_meter_updates(self) -> None:
+        """Coalesce rapid meter bursts into a low-frequency refresh (~0.8 Hz)."""
+        await asyncio.sleep(1.25)
+        pending = self._meter_pending_updates
+        self._meter_pending_updates = set()
+        self._meter_flush_task = None
+        for group, ch in pending:
+            async_dispatcher_send(self.hass, signal_track_update(self.entry_id), group, ch)
 
     def _handle_user_key_info(self, message: OscMessage) -> None:
         # ,issi [keyIdx, shortName, function, assigned(0|1)] — 16 keys, sent
