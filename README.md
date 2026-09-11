@@ -23,11 +23,13 @@ Both services accept an optional `entry_id` when more than one LV1 mixer is conf
 ## Lovelace audio fader card
 
 The repository includes a vertical LV1 channel-strip card at `www/audio-fader-card.js`.
-Copy that file to Home Assistant's `/config/www/audio-fader-card.js`, then register it as a Lovelace resource with the URL `/local/audio-fader-card.js` and resource type `JavaScript module`. Add a card with only the fader entity configured:
+Copy that file to Home Assistant's `/config/www/audio-fader-card.js`, then register it as a Lovelace resource with the URL `/local/audio-fader-card.js` and resource type `JavaScript module`. Add one or more faders, up to a maximum of eight:
 
 ```yaml
 type: custom:audio-fader-card
-fader_entity: number.waves_lv1_192_168_0_176_ch1_fader
+fader_entities:
+	- number.waves_lv1_192_168_0_176_ch1_fader
+	- number.waves_lv1_192_168_0_176_ch2_fader
 ```
 
-The card derives the track name, color, mute, and VU entities from the configured fader entity. Dragging updates the visual position locally and sends one `number.set_value` call when released; the MUTE button toggles the derived switch entity.
+The card derives the track name, color, mute, and VU entities from each configured fader entity. The card automatically sizes to fit the strips side by side and scales the strip widths to the available dashboard space without adding a horizontal scrollbar. Dragging acts as an active slider: the visual position updates immediately and rounded `number.set_value` calls are sent as the pointer moves. The MUTE button toggles its derived switch entity. The original singular `fader_entity` option remains supported for a one-fader card.

@@ -32,6 +32,7 @@ class AudioFaderCard extends LitElement {
   static properties = {
     hass: {},
     config: {},
+    _dragIndex: { state: true },
     _dragPosition: { state: true },
   };
 
@@ -39,7 +40,8 @@ class AudioFaderCard extends LitElement {
     :host {
       display: block;
       --fader-width: 156px;
-      --track-height: 390px;
+      --fader-gap: 8px;
+      --track-height: 320px;
       --muted-color: #d32626;
       --meter-green: #37bd67;
       --meter-yellow: #e2c33a;
@@ -50,14 +52,27 @@ class AudioFaderCard extends LitElement {
 
     .card {
       box-sizing: border-box;
-      width: var(--fader-width);
-      min-height: 520px;
+      width: min(100%, calc(var(--fader-count) * var(--fader-width) + (var(--fader-count) - 1) * var(--fader-gap) + 20px));
+      max-width: 100%;
+      min-height: 0;
       padding: 8px 10px 12px;
       overflow: hidden;
       background: var(--card-background-color, #202124);
       border: 1px solid var(--divider-color, #494949);
       border-radius: 4px;
       user-select: none;
+    }
+
+    .faders {
+      display: grid;
+      grid-template-columns: repeat(var(--fader-count), minmax(0, 1fr));
+      gap: var(--fader-gap);
+      width: 100%;
+      padding-bottom: 2px;
+    }
+
+    .strip {
+      min-width: 0;
     }
 
     .label {
@@ -119,7 +134,6 @@ class AudioFaderCard extends LitElement {
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
       font-size: 10px;
       line-height: 14px;
-      transform: translateY(50%);
     }
 
     .mark.left { left: 0; text-align: right; }
@@ -147,8 +161,8 @@ class AudioFaderCard extends LitElement {
       box-shadow: inset 0 0 3px #000;
     }
 
-    .track.left { left: 10px; }
-    .track.right { right: 10px; }
+    .track.left { left: 22px; }
+    .track.right { right: 22px; }
 
     .meter {
       position: absolute;
@@ -170,7 +184,7 @@ class AudioFaderCard extends LitElement {
       border-radius: 3px;
       box-shadow: 0 1px 3px #000, inset 0 1px #fff;
       pointer-events: none;
-      transform: translate(-50%, 50%);
+      transform: translateX(-50%);
     }
 
     .cap::after {
@@ -187,15 +201,23 @@ class AudioFaderCard extends LitElement {
 
   constructor() {
     super();
+    this._dragIndex = null;
     this._dragPosition = null;
-    this._dragging = false;
+    this._lastSentValue = null;
   }
 
   setConfig(config) {
-    if (!config || typeof config.fader_entity !== "string") {
-      throw new Error("audio-fader-card requires a fader_entity");
+    const faderEntities = Array.isArray(config?.fader_entities)
+      ? config.fader_entities
+      : [config?.fader_entity];
+    if (
+      faderEntities.length === 0 ||
+      faderEntities.length > 8 ||
+      faderEntities.some((entityId) => typeof entityId !== "string" || !entityId)
+    ) {
+      throw new Error("audio-fader-card requires 1 to 8 fader_entities");
     }
-    this.config = { ...config };
+    this.config = { ...config, fader_entities: faderEntities };
   }
 
   static getStubConfig() {
@@ -206,8 +228,8 @@ class AudioFaderCard extends LitElement {
     return {
       schema: [
         {
-          name: "fader_entity",
-          selector: { entity: { domain: "number" } },
+          name: "fader_entities",
+          selector: { entity: { domain: "number", multiple: true } },
         },
       ],
     };
@@ -216,14 +238,40 @@ class AudioFaderCard extends LitElement {
   render() {
     if (!this.config) return html``;
 
-    const entities = this._entities;
+    const faderEntities = this._faderEntities;
+
+    return html`
+      <article class="card" style="--fader-count: ${faderEntities.length}">
+        <div class="faders">
+          ${faderEntities.map((faderEntity, index) => this._renderFader(faderEntity, index))}
+        </div>
+      </article>
+    `;
+  }
+
+  get _faderEntities() {
+    return this.config?.fader_entities || [this.config?.fader_entity];
+  }
+
+  _entities(faderEntity) {
+    const prefix = faderEntity.replace(/^number\./, "").replace(/_fader$/, "");
+    return {
+      fader: faderEntity,
+      name: `sensor.${prefix}_track_name`,
+      color: `sensor.${prefix}_color`,
+      mute: `switch.${prefix}_mute`,
+      vu: `sensor.${prefix}_vu`,
+    };
+  }
+
+  _renderFader(faderEntity, index) {
+    const entities = this._entities(faderEntity);
     const faderState = this._state(entities.fader);
-    const faderDb = this._dragging && this._dragPosition !== null
+    const dragging = this._dragIndex === index && this._dragPosition !== null;
+    const faderDb = dragging
       ? this._positionToDb(this._dragPosition)
       : this._numberState(faderState, -144);
-    const position = this._dragging && this._dragPosition !== null
-      ? this._dragPosition
-      : this._dbToPosition(faderDb);
+    const position = dragging ? this._dragPosition : this._dbToPosition(faderDb);
     const vu = this._numberState(this._state(entities.vu), -144);
     const meterPosition = this._dbToPosition(vu);
     const color = this._safeColor(this._state(entities.color)?.state);
@@ -231,34 +279,23 @@ class AudioFaderCard extends LitElement {
     const muted = this._state(entities.mute)?.state === "on";
 
     return html`
-      <article class="card">
+      <section class="strip">
         <div class="label" style="background-color: ${color}" title="${name}">${name}</div>
-        <button class="mute" aria-pressed="${muted}" @click=${this._toggleMute}>MUTE</button>
+        <button class="mute" data-index="${index}" aria-pressed="${muted}" @click=${this._toggleMute}>MUTE</button>
         <div class="readout">${this._formatDb(faderDb)}</div>
         <div class="scale">
           ${MARKS.map((mark) => html`
-            <span class="mark left" style="top: ${100 - mark.position}%">${mark.label}</span>
-            <span class="mark right" style="top: ${100 - mark.position}%">${mark.label}</span>
+            <span class="mark left" style="bottom: calc(${mark.position}% - 7px)">${mark.label}</span>
+            <span class="mark right" style="bottom: calc(${mark.position}% - 7px)">${mark.label}</span>
           `)}
-          <div class="track-wrap" @pointerdown=${this._startDrag} @pointermove=${this._moveDrag} @pointerup=${this._endDrag} @pointercancel=${this._endDrag}>
+          <div class="track-wrap" data-index="${index}" @pointerdown=${this._startDrag} @pointermove=${this._moveDrag} @pointerup=${this._endDrag} @pointercancel=${this._endDrag}>
             <div class="track left"><div class="meter" style="--meter-height: ${meterPosition}%"></div></div>
             <div class="track right"><div class="meter" style="--meter-height: ${meterPosition}%"></div></div>
-            <div class="cap" style="bottom: ${position}%"></div>
+            <div class="cap" style="bottom: calc(${position}% - 11px)"></div>
           </div>
         </div>
-      </article>
+      </section>
     `;
-  }
-
-  get _entities() {
-    const prefix = this.config.fader_entity.replace(/^number\./, "").replace(/_fader$/, "");
-    return {
-      fader: this.config.fader_entity,
-      name: `sensor.${prefix}_track_name`,
-      color: `sensor.${prefix}_color`,
-      mute: `switch.${prefix}_mute`,
-      vu: `sensor.${prefix}_vu`,
-    };
   }
 
   _state(entityId) {
@@ -310,35 +347,47 @@ class AudioFaderCard extends LitElement {
   _startDrag(event) {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    this._dragging = true;
+    this._dragIndex = Number(event.currentTarget.dataset.index);
     this._dragPosition = this._positionFromEvent(event);
+    this._lastSentValue = null;
+    this._sendFaderValue(this._dragIndex, this._dragPosition);
     this.requestUpdate();
   }
 
   _moveDrag(event) {
-    if (!this._dragging) return;
+    if (this._dragIndex === null) return;
     this._dragPosition = this._positionFromEvent(event);
+    this._sendFaderValue(this._dragIndex, this._dragPosition);
     this.requestUpdate();
   }
 
   _endDrag(event) {
-    if (!this._dragging) return;
+    if (this._dragIndex === null) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     const position = this._dragPosition ?? 0;
-    const finalVal = Number(clamp(this._positionToDb(position), -144, 10).toFixed(1));
-    this._dragging = false;
+    this._sendFaderValue(this._dragIndex, position);
+    this._dragIndex = null;
     this._dragPosition = null;
+    this._lastSentValue = null;
     this.requestUpdate();
+  }
+
+  _sendFaderValue(index, position) {
+    const finalVal = Number(clamp(this._positionToDb(position), -144, 10).toFixed(1));
+    if (finalVal === this._lastSentValue) return;
+    this._lastSentValue = finalVal;
     this.hass?.callService("number", "set_value", {
-      entity_id: this.config.fader_entity,
+      entity_id: this._faderEntities[index],
       value: finalVal,
     });
   }
 
-  _toggleMute() {
-    this.hass?.callService("switch", "toggle", { entity_id: this._entities.mute });
+  _toggleMute(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const entities = this._entities(this._faderEntities[index]);
+    this.hass?.callService("switch", "toggle", { entity_id: entities.mute });
   }
 }
 
