@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-PLATFORMS: list[str] = ["button", "number", "select", "sensor", "switch", "text"]
+PLATFORMS: list[str] = ["binary_sensor", "button", "number", "select", "sensor", "switch", "text"]
 
 _FADE_SCHEMA = vol.Schema(
     {
@@ -54,8 +54,14 @@ async def async_setup_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> bool
     await coordinator.async_connect()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     _register_services(hass)
     return True
+
+
+async def _async_reload_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> None:
+    """Reload the entry when its options (e.g. enabled entity groups) change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> bool:

@@ -11,6 +11,15 @@ from __future__ import annotations
 
 from typing import Final
 
+from ..const import (
+    GROUP_AUXES,
+    GROUP_CHANNELS,
+    GROUP_DCAS,
+    GROUP_GROUPS,
+    GROUP_MAINS,
+    GROUP_MATRICES,
+)
+
 GROUP_TAG: Final[dict[int, str]] = {
     0: "In",
     1: "Grp",
@@ -53,6 +62,20 @@ ENTITY_GROUP_PREFIX: Final[dict[int, str]] = {
 
 # Groups the LV1 always has a fixed channel count for, regardless of mixer mode.
 FIXED_GROUP_COUNTS: Final[dict[int, int]] = {1: 8, 6: 8, 12: 8}
+
+# Which options-flow category each numbered group belongs to.
+TRACK_GROUP_CATEGORY: Final[dict[int, str]] = {
+    0: GROUP_CHANNELS,
+    1: GROUP_GROUPS,
+    2: GROUP_AUXES,
+    3: GROUP_MAINS,
+    4: GROUP_MAINS,
+    5: GROUP_MAINS,
+    6: GROUP_MATRICES,
+    7: GROUP_MAINS,
+    8: GROUP_MAINS,
+    12: GROUP_DCAS,
+}
 
 # Pseudo-group the LV1 multiplexes mute-group state onto (see coordinator.py).
 MUTE_GROUP_PSEUDO_GROUP: Final = 13
@@ -107,3 +130,15 @@ def enumerate_tracks(input_count: int, aux_count: int) -> list[tuple[int, int]]:
     tracks += [(7, 0), (8, 0)]  # Cue, TalkBack masters
     tracks += [(12, i) for i in range(FIXED_GROUP_COUNTS[12])]
     return tracks
+
+
+def track_group_category(group: int) -> str:
+    """Options-flow category (`channels`, `auxes`, ...) a numbered group belongs to."""
+    return TRACK_GROUP_CATEGORY.get(group, GROUP_CHANNELS)
+
+
+def filter_tracks_by_groups(
+    tracks: list[tuple[int, int]], enabled_groups: set[str]
+) -> list[tuple[int, int]]:
+    """Keep only tracks whose category is in `enabled_groups`."""
+    return [(group, ch) for group, ch in tracks if track_group_category(group) in enabled_groups]

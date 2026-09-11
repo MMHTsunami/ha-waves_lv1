@@ -8,8 +8,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import LV1Coordinator, signal_scene_update
-from .entity import LV1Entity
+from .const import GROUP_SCENES
+from .coordinator import LV1Coordinator, signal_connection_update, signal_scene_update
+from .entity import LV1Entity, enabled_groups_from_entry
 from .protocol.osc import OscArg
 
 
@@ -18,6 +19,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up the current-scene selector."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
+    if GROUP_SCENES not in enabled_groups_from_entry(entry):
+        return
     async_add_entities([LV1SceneSelect(coordinator)])
 
 
@@ -26,6 +29,7 @@ class LV1SceneSelect(SelectEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator) -> None:
         self._coordinator = coordinator
@@ -53,9 +57,20 @@ class LV1SceneSelect(SelectEntity):
                 self._handle_scene_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     @callback
     def _handle_scene_update(self) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_connection_update(self) -> None:
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:

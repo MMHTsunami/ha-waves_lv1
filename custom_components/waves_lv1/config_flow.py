@@ -12,10 +12,19 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_SELECTED, DOMAIN, HANDSHAKE_ACK_TIMEOUT, ZDNS_DEFAULT_TIMEOUT
+from .const import (
+    CONF_ENABLED_GROUPS,
+    CONF_SELECTED,
+    DEFAULT_ENABLED_GROUPS,
+    DOMAIN,
+    ENTITY_GROUP_LABELS,
+    HANDSHAKE_ACK_TIMEOUT,
+    ZDNS_DEFAULT_TIMEOUT,
+)
 from .protocol.discovery import DiscoveryEntry, discover
 from .protocol.tcp_client import LV1TcpClient
 
@@ -54,8 +63,15 @@ class WavesLv1ConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> "WavesLv1OptionsFlow":
+        """Let the user choose which entity groups to create after setup."""
+        return WavesLv1OptionsFlow()
+
     def __init__(self) -> None:
         self._discovered: dict[str, DiscoveryEntry] = {}
+        self._pending_host: str | None = None
+        self._pending_port: int | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -100,10 +116,9 @@ class WavesLv1ConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(f"{host}:{port}")
                 self._abort_if_unique_id_configured()
                 if await _async_try_connect(host, port):
-                    return self.async_create_entry(
-                        title=f"Waves LV1 ({host})",
-                        data={CONF_HOST: host, CONF_PORT: port},
-                    )
+                    self._pending_host = host
+                    self._pending_port = port
+                    return await self.async_step_groups()
                 errors["base"] = "cannot_connect"
 
         schema: dict[Any, Any] = {}
@@ -118,3 +133,47 @@ class WavesLv1ConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(schema),
             errors=errors,
         )
+
+    async def async_step_groups(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user pick which entity groups to create before the entry is added."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=f"Waves LV1 ({self._pending_host})",
+                data={CONF_HOST: self._pending_host, CONF_PORT: self._pending_port},
+                options={CONF_ENABLED_GROUPS: user_input[CONF_ENABLED_GROUPS]},
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_ENABLED_GROUPS, default=DEFAULT_ENABLED_GROUPS
+                ): cv.multi_select(ENTITY_GROUP_LABELS),
+            }
+        )
+        return self.async_show_form(step_id="groups", data_schema=schema)
+
+
+class WavesLv1OptionsFlow(OptionsFlow):
+    """Let the user pick which entity groups (Channels, Auxes, DCAs, ...) to create."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a multi-select of entity groups, defaulting to the current selection."""
+        if user_input is not None:
+            return self.async_create_entry(
+                data={CONF_ENABLED_GROUPS: user_input[CONF_ENABLED_GROUPS]}
+            )
+
+        current = self.config_entry.options.get(CONF_ENABLED_GROUPS, DEFAULT_ENABLED_GROUPS)
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_ENABLED_GROUPS, default=current): cv.multi_select(
+                    ENTITY_GROUP_LABELS
+                ),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+

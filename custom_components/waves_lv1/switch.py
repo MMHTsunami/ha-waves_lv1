@@ -10,10 +10,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import LV1Coordinator, signal_mute_group_update, signal_send_update
-from .entity import LV1Entity, aux_display_name
+from .const import GROUP_AUX_SENDS, GROUP_MUTE_GROUPS
+from .coordinator import LV1Coordinator, signal_connection_update, signal_mute_group_update, signal_send_update
+from .entity import LV1Entity, aux_display_name, enabled_groups_from_entry
 from .protocol.osc import OscArg
-from .protocol.tracks import track_entity_prefix
+from .protocol.tracks import filter_tracks_by_groups, track_entity_prefix
 
 
 async def async_setup_entry(
@@ -21,9 +22,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up all switch entities for the current mixer topology."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
+    enabled_groups = enabled_groups_from_entry(entry)
     entities: list[SwitchEntity] = []
 
-    for group, ch in coordinator.enumerate_tracks():
+    for group, ch in filter_tracks_by_groups(coordinator.enumerate_tracks(), enabled_groups):
         entities.extend(
             (
                 LV1TrackSwitch(coordinator, group, ch, "mute"),
@@ -31,11 +33,13 @@ async def async_setup_entry(
             )
         )
 
-    for ch in range(coordinator.effective_channels()):
-        for aux in range(coordinator.effective_auxes()):
-            entities.append(LV1SendSwitch(coordinator, ch, aux))
+    if GROUP_AUX_SENDS in enabled_groups:
+        for ch in range(coordinator.effective_channels()):
+            for aux in range(coordinator.effective_auxes()):
+                entities.append(LV1SendSwitch(coordinator, ch, aux))
 
-    entities.extend(LV1MuteGroupSwitch(coordinator, index) for index in range(8))
+    if GROUP_MUTE_GROUPS in enabled_groups:
+        entities.extend(LV1MuteGroupSwitch(coordinator, index) for index in range(8))
     async_add_entities(entities)
 
 
@@ -117,11 +121,22 @@ class LV1SendSwitch(SwitchEntity):
                 self._handle_send_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     @callback
     def _handle_send_update(self, group: int, ch: int, aux: int) -> None:
         if group == 0 and ch == self._ch and aux == self._aux:
             self.async_write_ha_state()
+
+    @callback
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         self._set_state(True)
@@ -149,6 +164,7 @@ class LV1MuteGroupSwitch(SwitchEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, index: int) -> None:
         self._coordinator = coordinator
@@ -176,11 +192,22 @@ class LV1MuteGroupSwitch(SwitchEntity):
                 self._handle_mute_group_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     @callback
     def _handle_mute_group_update(self, index: int) -> None:
         if index == self._index:
             self.async_write_ha_state()
+
+    @callback
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         self._set_state(True)

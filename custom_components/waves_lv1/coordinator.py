@@ -65,6 +65,11 @@ def signal_global_update(entry_id: str) -> str:
     return f"{DOMAIN}_{entry_id}_global_update"
 
 
+def signal_connection_update(entry_id: str) -> str:
+    """Fired (no args) whenever the TCP link connects, registers, or drops."""
+    return f"{DOMAIN}_{entry_id}_connection_update"
+
+
 class LV1Coordinator:
     """Owns the `LV1TcpClient`, maintains mixer state, and dispatches updates."""
 
@@ -143,10 +148,12 @@ class LV1Coordinator:
     def _on_connect(self, host: str, port: int) -> None:
         _LOGGER.info("TCP connected to %s:%s, running handshake", host, port)
         self._consecutive_failures = 0
+        async_dispatcher_send(self.hass, signal_connection_update(self.entry_id))
 
     def _on_registered(self, style: str) -> None:
         _LOGGER.info("Registered with the LV1 as %s", style)
         self.request_state_refresh()
+        async_dispatcher_send(self.hass, signal_connection_update(self.entry_id))
 
     def _on_close(self, had_error: bool) -> None:
         _LOGGER.warning("Connection closed (error=%s), will auto-reconnect", had_error)
@@ -157,6 +164,7 @@ class LV1Coordinator:
         if self._consecutive_failures >= CONSECUTIVE_FAILURES_BEFORE_REDISCOVER and self._rediscover_task is None:
             self._consecutive_failures = 0
             self._rediscover_task = self.hass.async_create_task(self._async_rediscover_port())
+        async_dispatcher_send(self.hass, signal_connection_update(self.entry_id))
 
     def _on_error(self, err: Exception) -> None:
         _LOGGER.error("OSC error: %s", err)

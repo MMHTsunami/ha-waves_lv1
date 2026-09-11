@@ -9,6 +9,13 @@
                     "host": "LV1 IP (override)",
                     "port": "LV1 port (0 = auto)"
                 }
+            },
+            "groups": {
+                "title": "Choose entity groups",
+                "description": "Select which groups of entities to create. Individual entities can still be enabled or disabled afterward, and this can be changed later via Configure.",
+                "data": {
+                    "enabled_groups": "Entity groups"
+                }
             }
         },
         "error": {
@@ -18,5 +25,18 @@
         "abort": {
             "already_configured": "This LV1 is already configured."
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Choose entity groups",
+                "description": "Select which groups of entities to create. Individual entities can still be enabled or disabled afterward.",
+                "data": {
+                    "enabled_groups": "Entity groups"
+                }
+            }
+        }
     }
 }
+
+

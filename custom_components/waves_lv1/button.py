@@ -6,12 +6,13 @@ from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import LV1Coordinator, signal_track_update
-from .entity import LV1Entity
+from .const import GROUP_GLOBAL, GROUP_SCENES, GROUP_USER_KEYS
+from .coordinator import LV1Coordinator, signal_connection_update, signal_track_update
+from .entity import LV1Entity, enabled_groups_from_entry
 from .protocol.discovery import discover
 from .protocol.osc import OscArg
 from .protocol.tracks import user_key_label
@@ -22,18 +23,29 @@ async def async_setup_entry(
 ) -> None:
     """Set up command buttons."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
-    buttons: list[ButtonEntity] = [
-        LV1CommandButton(coordinator, "scene_next", "Scene Next"),
-        LV1CommandButton(coordinator, "scene_prev", "Scene Previous"),
-        LV1CommandButton(coordinator, "tap_tempo", "Tap Tempo"),
-        LV1CommandButton(coordinator, "clear_solos", "Clear Solos"),
-        LV1CommandButton(coordinator, "refresh_state", "Refresh State"),
-        LV1CommandButton(coordinator, "rescan", "Re-scan Discovery"),
-    ]
-    buttons.extend(
-        LV1CommandButton(coordinator, f"user_key_{index}", f"User Key {index + 1}")
-        for index in range(16)
-    )
+    enabled_groups = enabled_groups_from_entry(entry)
+    buttons: list[ButtonEntity] = []
+    if GROUP_SCENES in enabled_groups:
+        buttons.extend(
+            (
+                LV1CommandButton(coordinator, "scene_next", "Scene Next"),
+                LV1CommandButton(coordinator, "scene_prev", "Scene Previous"),
+            )
+        )
+    if GROUP_GLOBAL in enabled_groups:
+        buttons.extend(
+            (
+                LV1CommandButton(coordinator, "tap_tempo", "Tap Tempo"),
+                LV1CommandButton(coordinator, "clear_solos", "Clear Solos"),
+                LV1CommandButton(coordinator, "refresh_state", "Refresh State"),
+                LV1CommandButton(coordinator, "rescan", "Re-scan Discovery"),
+            )
+        )
+    if GROUP_USER_KEYS in enabled_groups:
+        buttons.extend(
+            LV1CommandButton(coordinator, f"user_key_{index}", f"User Key {index + 1}")
+            for index in range(16)
+        )
     async_add_entities(buttons)
 
 
@@ -42,6 +54,7 @@ class LV1CommandButton(ButtonEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, command: str, name: str) -> None:
         self._coordinator = coordinator
@@ -62,6 +75,19 @@ class LV1CommandButton(ButtonEntity):
     @property
     def available(self) -> bool:
         return self._coordinator.connected
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
+
+    @callback
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
     async def async_press(self, **kwargs: Any) -> None:
         if self._command == "scene_next":

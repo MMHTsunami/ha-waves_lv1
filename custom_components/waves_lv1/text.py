@@ -8,8 +8,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import LV1Coordinator
-from .entity import LV1Entity
+from .entity import LV1Entity, enabled_groups_from_entry
 from .protocol.osc import OscArg
+from .protocol.tracks import filter_tracks_by_groups
 
 
 async def async_setup_entry(
@@ -17,9 +18,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up editable name entities for every track."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
+    enabled_groups = enabled_groups_from_entry(entry)
     async_add_entities(
         LV1TrackName(coordinator, group, ch)
-        for group, ch in coordinator.enumerate_tracks()
+        for group, ch in filter_tracks_by_groups(coordinator.enumerate_tracks(), enabled_groups)
     )
 
 

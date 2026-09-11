@@ -10,14 +10,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import (
     LV1Coordinator,
+    signal_connection_update,
     signal_global_update,
     signal_scene_update,
     signal_topology_update,
     signal_track_update,
     signal_user_key_update,
 )
-from .entity import LV1Entity
-from .protocol.tracks import user_key_label
+from .const import GROUP_GLOBAL, GROUP_SCENES, GROUP_USER_KEYS
+from .entity import LV1Entity, enabled_groups_from_entry
+from .protocol.tracks import filter_tracks_by_groups, user_key_label
 
 
 async def async_setup_entry(
@@ -25,18 +27,25 @@ async def async_setup_entry(
 ) -> None:
     """Set up read-only state sensors."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
-    entities: list[SensorEntity] = [
-        LV1CurrentSceneSensor(coordinator),
-        LV1TempoSensor(coordinator),
-        LV1FlipSensor(coordinator),
-        LV1TopologySensor(coordinator, "channels"),
-        LV1TopologySensor(coordinator, "auxes"),
-    ]
-    for group, ch in coordinator.enumerate_tracks():
+    enabled_groups = enabled_groups_from_entry(entry)
+    entities: list[SensorEntity] = []
+    if GROUP_SCENES in enabled_groups:
+        entities.append(LV1CurrentSceneSensor(coordinator))
+    if GROUP_GLOBAL in enabled_groups:
+        entities.extend(
+            (
+                LV1TempoSensor(coordinator),
+                LV1FlipSensor(coordinator),
+                LV1TopologySensor(coordinator, "channels"),
+                LV1TopologySensor(coordinator, "auxes"),
+            )
+        )
+    for group, ch in filter_tracks_by_groups(coordinator.enumerate_tracks(), enabled_groups):
         entities.extend(
             (LV1TrackNameSensor(coordinator, group, ch), LV1TrackColorSensor(coordinator, group, ch))
         )
-    entities.extend(LV1UserKeySensor(coordinator, index) for index in range(16))
+    if GROUP_USER_KEYS in enabled_groups:
+        entities.extend(LV1UserKeySensor(coordinator, index) for index in range(16))
     async_add_entities(entities)
 
 
@@ -45,6 +54,7 @@ class LV1CurrentSceneSensor(SensorEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator) -> None:
         self._coordinator = coordinator
@@ -57,6 +67,10 @@ class LV1CurrentSceneSensor(SensorEntity):
         return self._coordinator.current_scene_name
 
     @property
+    def available(self) -> bool:
+        return self._coordinator.connected
+
+    @property
     def extra_state_attributes(self) -> dict[str, int | None]:
         return {"scene_index": self._coordinator.current_scene}
 
@@ -65,6 +79,13 @@ class LV1CurrentSceneSensor(SensorEntity):
             async_dispatcher_connect(
                 self.hass,
                 signal_scene_update(self._coordinator.entry_id),
+                self._handle_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
                 self._handle_update,
             )
         )
@@ -79,6 +100,7 @@ class LV1TopologySensor(SensorEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, kind: str) -> None:
         self._coordinator = coordinator
@@ -96,11 +118,22 @@ class LV1TopologySensor(SensorEntity):
             else self._coordinator.effective_auxes()
         )
 
+    @property
+    def available(self) -> bool:
+        return self._coordinator.connected
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
                 signal_topology_update(self._coordinator.entry_id),
+                self._handle_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
                 self._handle_update,
             )
         )
@@ -113,8 +146,6 @@ class LV1TopologySensor(SensorEntity):
 class LV1TrackNameSensor(LV1Entity, SensorEntity):
     """Read-only track name sensor."""
 
-    _attr_entity_registry_enabled_default = False
-
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int) -> None:
         super().__init__(coordinator, group, ch, "sensor_name", control_label="Track Name")
 
@@ -125,8 +156,6 @@ class LV1TrackNameSensor(LV1Entity, SensorEntity):
 
 class LV1TrackColorSensor(LV1Entity, SensorEntity):
     """Track color represented as a hexadecimal RGB string."""
-
-    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator, group: int, ch: int) -> None:
         super().__init__(coordinator, group, ch, "color", control_label="Color")
@@ -169,6 +198,10 @@ class LV1UserKeySensor(SensorEntity):
         info = self._coordinator.user_keys.get(self._index)
         return {"assigned": info.assigned} if info else {"assigned": False}
 
+    @property
+    def available(self) -> bool:
+        return self._coordinator.connected
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(
@@ -177,11 +210,22 @@ class LV1UserKeySensor(SensorEntity):
                 self._handle_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     @callback
     def _handle_update(self, index: int) -> None:
         if index == self._index:
             self.async_write_ha_state()
+
+    @callback
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
 
 class LV1TempoSensor(SensorEntity):
@@ -189,6 +233,7 @@ class LV1TempoSensor(SensorEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = "BPM"
 
     def __init__(self, coordinator: LV1Coordinator) -> None:
@@ -201,11 +246,22 @@ class LV1TempoSensor(SensorEntity):
     def native_value(self) -> float | None:
         return self._coordinator.current_tempo
 
+    @property
+    def available(self) -> bool:
+        return self._coordinator.connected
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
                 signal_global_update(self._coordinator.entry_id),
+                self._handle_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
                 self._handle_update,
             )
         )
@@ -220,6 +276,7 @@ class LV1FlipSensor(SensorEntity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: LV1Coordinator) -> None:
         self._coordinator = coordinator
@@ -243,11 +300,22 @@ class LV1FlipSensor(SensorEntity):
             "channel": target.ch if target else 0,
         }
 
+    @property
+    def available(self) -> bool:
+        return self._coordinator.connected
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
                 signal_global_update(self._coordinator.entry_id),
+                self._handle_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
                 self._handle_update,
             )
         )

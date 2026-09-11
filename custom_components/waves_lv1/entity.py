@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
-from .const import DOMAIN
-from .coordinator import LV1Coordinator, signal_track_update
+from .const import CONF_ENABLED_GROUPS, DEFAULT_ENABLED_GROUPS, DOMAIN
+from .coordinator import LV1Coordinator, signal_connection_update, signal_track_update
 from .protocol.tracks import track_entity_prefix, track_label
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+
+
+def enabled_groups_from_entry(entry: "ConfigEntry") -> set[str]:
+    """The options-flow group categories the user has chosen to create entities for."""
+    return set(entry.options.get(CONF_ENABLED_GROUPS, DEFAULT_ENABLED_GROUPS))
 
 
 class LV1Entity(Entity):
@@ -22,6 +32,7 @@ class LV1Entity(Entity):
 
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -68,11 +79,22 @@ class LV1Entity(Entity):
                 self._handle_track_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     @callback
     def _handle_track_update(self, group: int, ch: int) -> None:
         if group == self._group and ch == self._ch:
             self.async_write_ha_state()
+
+    @callback
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def _track_name(self) -> str | None:

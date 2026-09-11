@@ -7,10 +7,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import LV1Coordinator
-from .entity import LV1Entity, aux_display_name
+from .const import GROUP_AUX_SENDS
+from .coordinator import LV1Coordinator, signal_connection_update
+from .entity import LV1Entity, aux_display_name, enabled_groups_from_entry
 from .protocol.osc import OscArg
-from .protocol.tracks import track_entity_prefix
+from .protocol.tracks import filter_tracks_by_groups, track_entity_prefix
 
 
 async def async_setup_entry(
@@ -18,15 +19,17 @@ async def async_setup_entry(
 ) -> None:
     """Set up numeric controls for the current mixer topology."""
     coordinator: LV1Coordinator = hass.data["waves_lv1"][entry.entry_id]
+    enabled_groups = enabled_groups_from_entry(entry)
     entities: list[NumberEntity] = []
-    for group, ch in coordinator.enumerate_tracks():
+    for group, ch in filter_tracks_by_groups(coordinator.enumerate_tracks(), enabled_groups):
         entities.extend(
             LV1TrackNumber(coordinator, group, ch, prop)
             for prop in ("gain", "pan", "width")
         )
-    for ch in range(coordinator.effective_channels()):
-        for aux in range(coordinator.effective_auxes()):
-            entities.append(LV1SendGainNumber(coordinator, ch, aux))
+    if GROUP_AUX_SENDS in enabled_groups:
+        for ch in range(coordinator.effective_channels()):
+            for aux in range(coordinator.effective_auxes()):
+                entities.append(LV1SendGainNumber(coordinator, ch, aux))
     async_add_entities(entities)
 
 
@@ -115,10 +118,20 @@ class LV1SendGainNumber(NumberEntity):
                 self._handle_send_update,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_connection_update(self._coordinator.entry_id),
+                self._handle_connection_update,
+            )
+        )
 
     def _handle_send_update(self, group: int, ch: int, aux: int) -> None:
         if group == 0 and ch == self._ch and aux == self._aux:
             self.async_write_ha_state()
+
+    def _handle_connection_update(self) -> None:
+        self.async_write_ha_state()
 
     async def async_set_native_value(self, value: float) -> None:
         value = float(value)

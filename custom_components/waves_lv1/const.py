@@ -9,6 +9,37 @@ SERVICE_FADE_FADER: Final = "fade_fader"
 SERVICE_SEND_RAW_OSC: Final = "send_raw_osc"
 
 CONF_SELECTED: Final = "selected"
+CONF_ENABLED_GROUPS: Final = "enabled_groups"
+
+# --- Entity group categories, selectable in the options flow ---
+GROUP_CHANNELS: Final = "channels"
+GROUP_GROUPS: Final = "groups"
+GROUP_AUXES: Final = "auxes"
+GROUP_MAINS: Final = "mains"
+GROUP_MATRICES: Final = "matrices"
+GROUP_DCAS: Final = "dcas"
+GROUP_AUX_SENDS: Final = "aux_sends"
+GROUP_MUTE_GROUPS: Final = "mute_groups"
+GROUP_USER_KEYS: Final = "user_keys"
+GROUP_SCENES: Final = "scenes"
+GROUP_GLOBAL: Final = "global"
+
+ENTITY_GROUP_LABELS: Final[dict[str, str]] = {
+    GROUP_CHANNELS: "Channels",
+    GROUP_GROUPS: "Groups",
+    GROUP_AUXES: "Auxes",
+    GROUP_MAINS: "Mains (LR / Center / Mono / Cue / Talkback)",
+    GROUP_MATRICES: "Matrices",
+    GROUP_DCAS: "DCAs",
+    GROUP_AUX_SENDS: "Aux Sends",
+    GROUP_MUTE_GROUPS: "Mute Groups",
+    GROUP_USER_KEYS: "User Keys",
+    GROUP_SCENES: "Scenes",
+    GROUP_GLOBAL: "Global (Tempo, Flip, Topology, Transport)",
+}
+
+# Every group is created by default; the user narrows this down via the options flow.
+DEFAULT_ENABLED_GROUPS: Final[list[str]] = list(ENTITY_GROUP_LABELS)
 
 # --- OSC-over-TCP framing (reverse-engineered from LV1 captures) ---
 # Frame = [4B big-endian payload length][8B header][N bytes OSC payload].
