@@ -41,18 +41,38 @@ Port the reverse-engineered OSC-over-TCP protocol from `bitfocus/companion-modul
 - [x] **Unit Tests:** `pytest-homeassistant-custom-component`-backed tests for `/Notify/...` state handling and dispatcher signals (`tests/test_coordinator.py`), plus pure-logic tests for topology helpers (`tests/test_tracks.py`).
 
 ### Phase 5 — Entity Platforms & Services
-- [ ] **`switch.py`:** Mute, solo, send-on, mute groups (1-8), phantom power (+48V), polarity, plugin bypass/enable, spill, talkback engage.
-- [ ] **`number.py`:** Faders, pan, width, send gain, send pan, preamp gain, digital trim, EQ bands (freq/gain/Q).
-- [ ] **`select.py`:** Scene recall by name, aux focus (`/Set/AuxId`), flip-sends via user keys.
-- [ ] **`button.py`:** Scene next/prev, tap tempo, clear solos, user key presses, state refresh, re-scan discovery.
-- [ ] **`sensor.py`:** Track names, hex colors, current scene, tempo, flip state, user key info, channel totals.
-- [ ] **`text.py`:** Track renaming (`/Set/TrackName` with optimistic local updates).
-- [ ] **Services:** Implement `waves_lv1.fade_fader` and `waves_lv1.send_raw_osc` in `services.yaml` and `__init__.py`.
+- [x] **`switch.py`:** Mute, solo, send-on, mute groups (1-8), phantom power (+48V), polarity, plugin bypass/enable, spill, talkback engage.
+- [x] **`number.py`:** Faders, pan, width, send gain, send pan, preamp gain, digital trim, EQ bands (freq/gain/Q).
+- [x] **`select.py`:** Scene recall by name, aux focus (`/Set/AuxId`), flip-sends via user keys.
+- [x] **`button.py`:** Scene next/prev, tap tempo, clear solos, user key presses, state refresh, re-scan discovery.
+- [x] **`sensor.py`:** Track names, hex colors, current scene, tempo, flip state, user key info, channel totals.
+- [x] **`text.py`:** Track renaming (`/Set/TrackName` with optimistic local updates).
+- [x] **Services:** Implement `waves_lv1.fade_fader` and `waves_lv1.send_raw_osc` in `services.yaml` and `__init__.py`.
 
 ### Phase 6 — Integration Polish
-- [ ] **`diagnostics.py`:** Diagnostic dump for coordinator state.
-- [ ] **Repairs:** Connection/handshake repair flow handlers.
-- [ ] **Registry Hygiene:** Verify high-cardinality entities default to disabled.
+- [x] **`diagnostics.py`:** Diagnostic dump for coordinator state.
+- [x] **Repairs:** Connection/handshake repair flow handlers.
+- [x] **Registry Hygiene:** Verify high-cardinality entities default to disabled.
 
 ### Phase 7 (Deferred Milestone) — VU Meters
-- [ ] **`sensor.py` (Meters):** Track VU sensors from `/Notify/Meters` with throttled/coalesced updates (~0.8 Hz batching).
+- [x] **`sensor.py` (Meters):** Track VU sensors from `/Notify/Meters` with throttled/coalesced updates (~0.8 Hz batching).
+- [x] **Validation:** Confirm the LV1 meter parser handles both raw triplets and count-prefixed payloads without blowing up on mixed OSC numerics.
+
+### Phase 8 - Custom Home Assistant Audio Mixer Card Instructions
+
+#### Tech Stack Rules
+- Target Environment: Home Assistant Frontend Dashboard (Lovelace Card).
+- Framework: Use standard Lit (`lit-element` or modern vanilla JavaScript web components) as per modern Home Assistant standards.
+- UI Design: Implement a vertical "audio channel strip" layout. Each strip must have a label, a vertical visual fader slider, a visual volume DB/percentage meter indicator, and a mute button.
+-Fader slider must
+- Styling: Use Home Assistant CSS variables (`--primary-text-color`, `--card-background-color`, etc.) to ensure theme compatibility.
+
+#### Home Assistant Core Integration
+- Every reactive state update relies on the global `hass` object (`this.hass`).
+- To fetch an entity state, use: `this.hass.states['media_player.example']` or `this.hass.states['number.example']`.
+- To mutate state / move a fader, use `this.hass.callService(domain, service, data)`. 
+
+#### Code Architecture
+- Must include a `setConfig(config)` method to handle Lovelace yaml inputs.
+- Must include a static `getStubConfig()` method to provide dashboard preview defaults.
+- Must include a static `getConfigForm()` method to provide form editor.
