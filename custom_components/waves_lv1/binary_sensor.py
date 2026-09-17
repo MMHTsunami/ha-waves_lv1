@@ -52,6 +52,8 @@ class LV1ConnectivitySensor(BinarySensorEntity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_connection_update(self) -> None:

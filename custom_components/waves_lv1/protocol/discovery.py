@@ -102,8 +102,27 @@ def parse_zdns(data: bytes) -> DiscoveryEntry | None:
 
 
 def _local_ipv4_addresses() -> set[str]:
-    """Best-effort enumeration of this host's non-loopback IPv4 addresses."""
+    """Enumerate non-loopback IPv4 addresses on *every* NIC (needed for multi-homed hosts)."""
     addresses: set[str] = set()
+
+    # Primary path: walk all adapters so multi-NIC hosts (e.g. a mini PC with a
+    # dedicated NIC for the LV1's network) join multicast on every interface,
+    # not just the one used for the default route.
+    try:
+        import ifaddr  # local import: optional dependency, may be unavailable
+
+        for adapter in ifaddr.get_adapters():
+            for ip in adapter.ips:
+                if ip.is_IPv4 and isinstance(ip.ip, str) and not ip.ip.startswith("127."):
+                    addresses.add(ip.ip)
+    except Exception:  # pragma: no cover - defensive, ifaddr should normally be present
+        pass
+
+    if addresses:
+        return addresses
+
+    # Fallbacks (only used if ifaddr is unavailable): these tend to only see
+    # the default-route NIC, so they're insufficient on multi-homed hosts.
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             candidate = info[4][0]
@@ -111,8 +130,6 @@ def _local_ipv4_addresses() -> set[str]:
                 addresses.add(candidate)
     except OSError:
         pass
-    # Fallback: ask the OS which interface would route to the internet
-    # (no packets are actually sent for a UDP "connect").
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             probe.connect(("8.8.8.8", 80))

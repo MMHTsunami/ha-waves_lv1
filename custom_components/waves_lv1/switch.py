@@ -128,6 +128,8 @@ class LV1SendSwitch(SwitchEntity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_send_update(self, group: int, ch: int, aux: int) -> None:
@@ -199,6 +201,8 @@ class LV1MuteGroupSwitch(SwitchEntity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_mute_group_update(self, index: int) -> None:

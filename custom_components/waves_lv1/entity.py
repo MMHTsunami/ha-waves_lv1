@@ -86,6 +86,8 @@ class LV1Entity(Entity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case connection/state changed before these subscriptions existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_track_update(self, group: int, ch: int) -> None:

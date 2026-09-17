@@ -93,6 +93,8 @@ class LV1CurrentSceneSensor(SensorEntity):
                 self._handle_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self) -> None:
@@ -141,6 +143,8 @@ class LV1TopologySensor(SensorEntity):
                 self._handle_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self) -> None:
@@ -237,6 +241,8 @@ class LV1UserKeySensor(SensorEntity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self, index: int) -> None:
@@ -285,6 +291,8 @@ class LV1TempoSensor(SensorEntity):
                 self._handle_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self) -> None:
@@ -339,6 +347,8 @@ class LV1FlipSensor(SensorEntity):
                 self._handle_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self) -> None:

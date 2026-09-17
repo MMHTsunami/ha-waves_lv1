@@ -125,6 +125,8 @@ class LV1SendGainNumber(NumberEntity):
                 self._handle_connection_update,
             )
         )
+        # Re-sync now in case the connection state changed before this subscription existed.
+        self.async_write_ha_state()
 
     def _handle_send_update(self, group: int, ch: int, aux: int) -> None:
         if group == 0 and ch == self._ch and aux == self._aux:

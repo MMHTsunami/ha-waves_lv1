@@ -267,34 +267,41 @@ class LV1Coordinator:
         async_dispatcher_send(self.hass, signal_track_update(self.entry_id), int(group), int(ch))
 
     def _handle_meters(self, message: OscMessage) -> None:
-        """Accept `/Notify/Meters` payloads in either plain triplet or "count + triplets" form."""
+        """Accept `/Notify/Meters` payloads in either plain quad or "count + quads" form.
+
+        Each meter is (group, ch, sub, dB-float); `sub` distinguishes mono/left
+        (0) from the right channel of a stereo track (1) — only sub=0 is
+        exposed as the track's VU level, matching the Companion module.
+        """
         args = message.args
         if not args:
             return
 
-        total_triplets = None
+        total_quads = None
         if args[0].type == "i":
             maybe_count = args[0].value
-            if isinstance(maybe_count, int) and maybe_count > 0 and len(args) - 1 == maybe_count * 3:
-                total_triplets = maybe_count
+            if isinstance(maybe_count, int) and maybe_count > 0 and len(args) - 1 == maybe_count * 4:
+                total_quads = maybe_count
                 start = 1
             else:
                 start = 0
         else:
             start = 0
 
-        if total_triplets is None:
-            total_triplets = (len(args) - start) // 3
+        if total_quads is None:
+            total_quads = (len(args) - start) // 4
 
         updated: set[tuple[int, int]] = set()
-        for idx in range(total_triplets):
-            base = start + idx * 3
-            if base + 2 >= len(args):
+        for idx in range(total_quads):
+            base = start + idx * 4
+            if base + 3 >= len(args):
                 break
-            group_arg, ch_arg, value_arg = args[base], args[base + 1], args[base + 2]
+            group_arg, ch_arg, sub_arg, value_arg = args[base], args[base + 1], args[base + 2], args[base + 3]
             if group_arg.type not in ("i", "f", "d") or ch_arg.type not in ("i", "f", "d"):
                 continue
-            if value_arg.type not in ("i", "f", "d"):
+            if sub_arg.type not in ("i", "f", "d") or value_arg.type not in ("i", "f", "d"):
+                continue
+            if int(sub_arg.value) != 0:
                 continue
             group, ch = int(group_arg.value), int(ch_arg.value)
             value = float(value_arg.value)
@@ -511,6 +518,7 @@ _NOTIFY_HANDLERS: dict[str, Any] = {
     "/Notify/TrackColor": LV1Coordinator._handle_track_color,
     "/Notify/Track/Name": LV1Coordinator._handle_track_name,
     "/Notify/TrackName": LV1Coordinator._handle_track_name,
+    "/Notify/Meters": LV1Coordinator._handle_meters,
     "/Notify/UserKeyInfo": LV1Coordinator._handle_user_key_info,
     "/Notify/Tempo": LV1Coordinator._handle_tempo,
     "/Notify/InternalAssign": LV1Coordinator._handle_internal_assign,
