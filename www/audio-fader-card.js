@@ -166,11 +166,20 @@ class AudioFaderCard extends LitElement {
 
     .meter {
       position: absolute;
+      top: 0;
       right: 0;
       bottom: 0;
       left: 0;
-      height: var(--meter-height);
       background: linear-gradient(to top, var(--meter-green) 0 49%, var(--meter-yellow) 49% 88%, var(--meter-red) 88% 100%);
+    }
+
+    .meter-cover {
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: calc(100% - var(--meter-height));
+      background: #111416;
     }
 
     .cap {
@@ -289,8 +298,8 @@ class AudioFaderCard extends LitElement {
             <span class="mark right" style="bottom: calc(${mark.position}% - 7px)">${mark.label}</span>
           `)}
           <div class="track-wrap" data-index="${index}" @pointerdown=${this._startDrag} @pointermove=${this._moveDrag} @pointerup=${this._endDrag} @pointercancel=${this._endDrag}>
-            <div class="track left"><div class="meter" style="--meter-height: ${meterPosition}%"></div></div>
-            <div class="track right"><div class="meter" style="--meter-height: ${meterPosition}%"></div></div>
+            <div class="track left"><div class="meter"></div><div class="meter-cover" style="--meter-height: ${meterPosition}%"></div></div>
+            <div class="track right"><div class="meter"></div><div class="meter-cover" style="--meter-height: ${meterPosition}%"></div></div>
             <div class="cap" style="bottom: calc(${position}% - 11px)"></div>
           </div>
         </div>
