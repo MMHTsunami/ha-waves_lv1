@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_AUX_CHANNELS,
     DEFAULT_INPUT_CHANNELS,
     DOMAIN,
+    METER_FLUSH_INTERVAL,
 )
 from .protocol.discovery import discover
 from .protocol.models import ChannelState, DetectedTopology, FlipTarget, SendState, UserKeyInfo
@@ -315,8 +316,8 @@ class LV1Coordinator:
             self._meter_flush_task = self.hass.async_create_task(self._async_flush_meter_updates())
 
     async def _async_flush_meter_updates(self) -> None:
-        """Coalesce rapid meter bursts into a low-frequency refresh (~0.8 Hz)."""
-        await asyncio.sleep(1.25)
+        """Coalesce rapid meter bursts into a refresh at METER_FLUSH_INTERVAL (~5 Hz)."""
+        await asyncio.sleep(METER_FLUSH_INTERVAL)
         pending = self._meter_pending_updates
         self._meter_pending_updates = set()
         self._meter_flush_task = None
